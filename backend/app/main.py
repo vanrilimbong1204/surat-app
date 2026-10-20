@@ -437,7 +437,7 @@ def get_settings():
     return {"owner_names": owners,
             "storage": {"arsip": str(db.ARSIP), "kotak_masuk": str(db.DROP), "sampah": str(db.TRASH),
                         "backup": str(db.BACKUP), "database": str(db.DB_PATH),
-                        "icloud": "Mobile Documents" in str(db.HOME)},
+                        "cloud": db.CLOUD},
             "watcher": watcher.state}
 
 

@@ -103,7 +103,7 @@ export interface ImportResult {
 
 export interface Settings {
   owner_names: string[]
-  storage: { arsip: string; kotak_masuk: string; sampah: string; backup: string; database: string; icloud: boolean }
+  storage: { arsip: string; kotak_masuk: string; sampah: string; backup: string; database: string; cloud: string | null }
   watcher: { last_scan: string | null; recent: ImportResult[]; running: boolean; error: string | null }
 }
 

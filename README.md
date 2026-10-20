@@ -16,18 +16,26 @@ Buka `http://localhost:8100`, lalu isi **Nama kamu** di menu Pengaturan (dipakai
 
 | Lokasi | Isi |
 |---|---|
-| `iCloud Drive/Arsip Surat/Arsip/TAHUN/BULAN/MASUK|KELUAR/` | PDF surat (ber-lapisan-teks, bisa dicari) |
-| `iCloud Drive/Arsip Surat/Kotak Masuk/` | taruh file di sini → diimpor otomatis |
-| `iCloud Drive/Arsip Surat/_backup/` | salinan harian database (14 terakhir) |
-| `iCloud Drive/Arsip Surat/Sampah/` | file surat yang dihapus dari register |
-| `data/surat.db` | database (lokal; SQLite tidak aman disinkron iCloud) |
+| `Google Drive/Arsip Surat/Arsip/TAHUN/BULAN/MASUK|KELUAR/` | PDF surat (ber-lapisan-teks, bisa dicari) |
+| `Google Drive/Arsip Surat/Kotak Masuk/` | taruh file di sini → diimpor otomatis |
+| `Google Drive/Arsip Surat/_backup/` | salinan harian database (14 terakhir) |
+| `Google Drive/Arsip Surat/Sampah/` | file surat yang dihapus dari register |
+| `data/surat.db` | database (lokal; SQLite tidak aman disinkron cloud) |
 | `data/inbox/` | unggahan yang belum disimpan (dibersihkan setelah 2 hari) |
 
-Lokasi iCloud bisa diganti dengan env `ARSIP_HOME` di `.env`.
+Lokasi diatur lewat `ARSIP_HOME` di `.env` (mis. folder Google Drive for desktop).
+Tanpa `ARSIP_HOME`, app memakai iCloud Drive kalau ada.
+
+### Dipakai dari akun Gmail lain
+
+Dashboard tidak memakai login Google, jadi akun Gmail di perangkat lain tidak berpengaruh — cukup buka alamat dashboard
+(lewat Tailscale). Untuk melihat/menambah file langsung di Drive dari akun lain: bagikan folder `Arsip Surat`
+ke akun itu sebagai **Editor**, lalu di akun tersebut *Tambahkan pintasan ke Drive*.
 
 ## Input otomatis
 
-- **Kotak Masuk iCloud**: di iPhone buka app Files → folder `Arsip Surat/Kotak Masuk` → ⋯ → *Pindai Dokumen*.
+- **Kotak Masuk Drive**: di HP buka app Google Drive → + → *Pindai*, simpan ke `Arsip Surat/Kotak Masuk`
+  (atau pindahkan file yang sudah ada di Drive ke folder itu).
   Dalam ±30 detik surat dibaca, diisi, dan disimpan. Subfolder `Masuk/` dan `Keluar/` memaksa arahnya.
 - **Unggah di web**: pilih/foto file → *Baca & simpan otomatis*. Banyak PDF = banyak surat;
   banyak foto = halaman satu surat (bisa diubah).

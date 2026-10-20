@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type Settings as S } from '../api'
 
-const short = (p: string) => p.replace(/^.*com~apple~CloudDocs/, 'iCloud Drive').replace(/^\/Users\/[^/]+/, '~')
+const short = (p: string) => p
+  .replace(/^.*CloudStorage\/GoogleDrive-[^/]+\/My Drive/, 'Google Drive')
+  .replace(/^.*com~apple~CloudDocs/, 'iCloud Drive')
+  .replace(/^\/Users\/[^/]+/, '~')
 
 export default function Settings() {
   const [s, setS] = useState<S | null>(null)
@@ -41,7 +44,7 @@ export default function Settings() {
       <section className="card">
         <div className="card-head"><h2>Kotak Masuk otomatis</h2>
           <span className={`tstate ${s.watcher.running && !s.watcher.error ? 'ts-selesai' : 'ts-giliranmu'}`}>{s.watcher.running && !s.watcher.error ? 'Aktif' : 'Bermasalah'}</span></div>
-        <p className="muted small top0">Taruh foto/PDF surat di folder ini — dari iPhone (app Files → “Pindai Dokumen” → simpan ke folder ini) atau dari Finder di Mac.
+        <p className="muted small top0">Taruh foto/PDF surat di folder ini — dari HP (app Google Drive → + → Pindai, simpan ke folder ini), pindahkan file yang sudah ada di Drive ke sini, atau salin dari Finder di Mac.
           Dalam ±30 detik surat dibaca, diisi, dan disimpan sendiri.</p>
         <div className="path">{short(s.storage.kotak_masuk)}</div>
         <ul className="small muted list">
@@ -72,7 +75,7 @@ export default function Settings() {
           <dt>Backup database</dt><dd className="mono small">{short(s.storage.backup)} <span className="muted">(harian, 14 terakhir)</span></dd>
           <dt>Surat dihapus</dt><dd className="mono small">{short(s.storage.sampah)}</dd>
         </dl>
-        {s.storage.icloud && <p className="muted small">File surat ada di iCloud Drive: ikut ter-backup dan bisa dibuka dari app Files di iPhone walau Mac sedang mati.</p>}
+        {s.storage.cloud && <p className="muted small">File surat ada di {s.storage.cloud}: ikut ter-backup dan bisa dibuka dari HP atau browser walau Mac sedang mati.</p>}
       </section>
     </div>
   )
