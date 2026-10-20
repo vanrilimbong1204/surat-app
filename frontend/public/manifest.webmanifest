@@ -1,0 +1,9 @@
+{
+  "name": "Arsip Surat",
+  "short_name": "Surat",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f4ec",
+  "theme_color": "#1f4e4a",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
