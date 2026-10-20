@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { api, type LetterDetail, type Meta, type RefMatch, type UploadResult } from '../api'
+import { api, type ImportResult, type LetterDetail, type Meta, type RefMatch, type UploadResult } from '../api'
 import HighlightsEditor from '../components/HighlightsEditor'
 import LetterForm, { emptyForm, type FormValue } from '../components/LetterForm'
 import LetterPicker from '../components/LetterPicker'
-import { DirBadge, RELATION_LABEL } from '../util'
+import { DirBadge, RELATION_LABEL, STATUS_LABEL } from '../util'
 
 const METHOD_LABEL: Record<string, string> = {
   'pdf-digital': 'PDF digital — teks dibaca langsung',
@@ -28,6 +28,8 @@ export default function Upload() {
   const [points, setPoints] = useState<string[]>([])
   const [links, setLinks] = useState<Link_[]>([])
   const [picking, setPicking] = useState(false)
+  const [oneLetter, setOneLetter] = useState<boolean | null>(null)
+  const [done, setDone] = useState<ImportResult[] | null>(null)
   const pickRef = useRef<HTMLInputElement>(null)
   const camRef = useRef<HTMLInputElement>(null)
 
@@ -45,6 +47,15 @@ export default function Upload() {
   }, [replyTo])
 
   const addFiles = (fl: FileList | null) => { if (fl) setFiles(f => [...f, ...Array.from(fl)]) }
+
+  const allImages = files.length > 0 && files.every(f => f.type.startsWith('image/'))
+  const asOne = oneLetter ?? allImages   // default: kumpulan foto = halaman satu surat
+
+  async function processAuto() {
+    setBusy('Membaca & menyimpan… (±5 detik per halaman)'); setErr('')
+    try { setDone(await api.uploadAuto(files, asOne)); setFiles([]) } catch (e) { setErr((e as Error).message) }
+    setBusy('')
+  }
 
   async function process() {
     setBusy('Membaca surat… (OCR bisa butuh beberapa detik per halaman)'); setErr('')
@@ -83,10 +94,36 @@ export default function Upload() {
     <div className="page">
       <header className="page-head">
         <div><div className="eyebrow">Unggah</div><h1>{replyTo ? 'Catat tanggapan' : 'Surat baru'}</h1>
-          <p className="lead">Foto surat kertas atau pilih PDF. Isi surat dibaca otomatis, poin penting disorot, lalu kamu tinggal cek.</p></div>
+          <p className="lead">Foto surat kertas atau pilih PDF. Sistem membaca isinya dan mengisi semua data sendiri — arah masuk/keluar, pengirim, perihal, tenggat, poin penting, dan relasi ke surat lain.</p></div>
       </header>
 
-      {!ready && (
+      {done && (
+        <section className="card upload-card">
+          <div className="card-head"><h2>Selesai dibaca</h2><span className="muted small">{done.filter(d => d.ok).length} dari {done.length} berhasil</span></div>
+          {done.map((d, i) => d.ok ? (
+            <Link key={i} to={`/surat/${d.id}`} className="done-item">
+              <span className="done-ok">{d.duplicate ? '=' : '✓'}</span>
+              <div>
+                <div className="done-subj">{d.subject || '(tanpa perihal)'}</div>
+                <div className="muted small">
+                  {d.duplicate ? 'Sudah pernah disimpan sebelumnya' : <>
+                    {d.direction === 'masuk' ? 'Masuk dari' : 'Keluar ke'} {d.party || '?'} · {STATUS_LABEL[d.status!]}
+                    {!!d.linked && <> · terhubung ke {d.linked} surat lain</>}</>}
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div key={i} className="done-item done-fail"><span className="done-ok">!</span><div><div className="done-subj">{d.file}</div><div className="small">{d.error}</div></div></div>
+          ))}
+          <div className="muted small">Semua data diisi otomatis dan ditandai “perlu dicek”. Cukup lihat sekilas lalu tekan “Sudah benar”.</div>
+          <div className="row-btns">
+            <button className="btn btn-primary" onClick={() => setDone(null)}>Unggah lagi</button>
+            <Link className="btn" to="/">Ke beranda</Link>
+          </div>
+        </section>
+      )}
+
+      {!ready && !done && (
         <section className="card upload-card">
           <input ref={pickRef} type="file" multiple accept="application/pdf,image/*" hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
           <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
@@ -109,9 +146,22 @@ export default function Upload() {
                   <button className="icon-btn" onClick={() => setFiles(files.filter((_, j) => j !== i))}>×</button>
                 </div>
               ))}
-              <button className="btn btn-primary btn-block" disabled={!!busy} onClick={process}>
-                {busy || `Proses ${files.length} file →`}
-              </button>
+              {files.length > 1 && (
+                <label className="check small">
+                  <input type="checkbox" checked={asOne} onChange={e => setOneLetter(e.target.checked)} />
+                  Semua file ini halaman dari <b>satu</b> surat
+                </label>
+              )}
+              {replyTo ? (
+                <button className="btn btn-primary btn-block" disabled={!!busy} onClick={process}>{busy || 'Baca surat →'}</button>
+              ) : (
+                <>
+                  <button className="btn btn-primary btn-block" disabled={!!busy} onClick={processAuto}>
+                    {busy || (asOne || files.length === 1 ? '✓ Baca & simpan otomatis' : `✓ Baca & simpan ${files.length} surat otomatis`)}
+                  </button>
+                  {!busy && (asOne || files.length === 1) && <button className="link small center" onClick={process}>atau cek & isi dulu sebelum disimpan</button>}
+                </>
+              )}
             </div>
           )}
           <button className="link small center" onClick={() => setNoFile(true)}>Catat tanpa file (mis. surat keluar yang tidak di-scan)</button>

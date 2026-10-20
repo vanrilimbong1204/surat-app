@@ -15,6 +15,8 @@ export interface Letter {
   notes: string
   highlights: string[]
   highlights_source: 'auto' | 'ai' | 'manual'
+  needs_review: number
+  source: 'manual' | 'otomatis' | 'folder'
   file_path: string | null
   pages: number
   created_at: string
@@ -93,8 +95,21 @@ export interface UploadResult {
   duplicate: { id: number; subject: string } | null
 }
 
+export interface ImportResult {
+  ok: boolean; file: string; error?: string
+  id?: number; subject?: string; direction?: Direction; party?: string; status?: Status
+  duplicate?: boolean; linked?: number; at?: string
+}
+
+export interface Settings {
+  owner_names: string[]
+  storage: { arsip: string; kotak_masuk: string; sampah: string; backup: string; database: string; icloud: boolean }
+  watcher: { last_scan: string | null; recent: ImportResult[]; running: boolean; error: string | null }
+}
+
 export interface Dashboard {
-  kpi: Record<'masuk_bulan_ini' | 'keluar_bulan_ini' | 'perlu_tindakan' | 'menunggu_balasan' | 'lewat_tenggat' | 'total', number>
+  kpi: Record<'masuk_bulan_ini' | 'keluar_bulan_ini' | 'perlu_tindakan' | 'menunggu_balasan' | 'lewat_tenggat' | 'perlu_dicek' | 'total', number>
+  review: Letter[]
   overdue: Letter[]
   upcoming: Letter[]
   action: Letter[]
@@ -133,6 +148,14 @@ export const api = {
   delRelation: (id: number) => req(`/api/relations/${id}`, { method: 'DELETE' }),
   threads: () => req<Thread[]>('/api/threads'),
   threadAi: (id: number) => req<Thread>(`/api/threads/${id}/ai`, { method: 'POST' }),
+  settings: () => req<Settings>('/api/settings'),
+  saveSettings: (owner_names: string[]) => req<Settings>('/api/settings', json('PUT', { owner_names })),
+  uploadAuto: (files: File[], oneLetter: boolean) => {
+    const fd = new FormData()
+    files.forEach(f => fd.append('files', f))
+    fd.append('one_letter', String(oneLetter))
+    return req<ImportResult[]>('/api/upload/auto', { method: 'POST', body: fd })
+  },
   upload: (files: File[]) => {
     const fd = new FormData()
     files.forEach(f => fd.append('files', f))

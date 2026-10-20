@@ -11,14 +11,15 @@ export default function Register() {
   const direction = sp.get('direction') ?? ''
   const status = sp.get('status') ?? ''
   const category = sp.get('category') ?? ''
+  const review = sp.get('review') ?? ''
 
   useEffect(() => { api.meta().then(setMeta) }, [])
   useEffect(() => {
     const h = setTimeout(() => {
-      api.letters({ q, direction, status, category }).then(setItems)
+      api.letters({ q, direction, status, category, review }).then(setItems)
     }, 200)
     return () => clearTimeout(h)
-  }, [q, direction, status, category])
+  }, [q, direction, status, category, review])
 
   const setF = (k: string, v: string) => {
     const n = new URLSearchParams(sp)
@@ -47,6 +48,7 @@ export default function Register() {
           <option value="">Semua kategori</option>
           {meta?.categories.map(c => <option key={c}>{c}</option>)}
         </select>
+        <label className="check small"><input type="checkbox" checked={!!review} onChange={e => setF('review', e.target.checked ? '1' : '')} /> Perlu dicek</label>
       </div>
       <section className="card">
         {items === null ? <div className="loading">Memuat…</div>

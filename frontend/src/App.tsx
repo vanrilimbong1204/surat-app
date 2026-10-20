@@ -4,12 +4,14 @@ import Register from './pages/Register'
 import Upload from './pages/Upload'
 import LetterPage from './pages/LetterPage'
 import Threads from './pages/Threads'
+import Settings from './pages/Settings'
 
 const NAV = [
   { to: '/', label: 'Beranda', icon: '◧' },
   { to: '/surat', label: 'Register', icon: '☰' },
   { to: '/unggah', label: 'Unggah', icon: '+', primary: true },
   { to: '/benang', label: 'Benang', icon: '⟟' },
+  { to: '/pengaturan', label: 'Pengaturan', icon: '⚙' },
 ]
 
 export default function App() {
@@ -38,6 +40,7 @@ export default function App() {
           <Route path="/surat/:id" element={<LetterPage />} />
           <Route path="/unggah" element={<Upload />} />
           <Route path="/benang" element={<Threads />} />
+          <Route path="/pengaturan" element={<Settings />} />
         </Routes>
       </main>
       <nav className="tabbar">

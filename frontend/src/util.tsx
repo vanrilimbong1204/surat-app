@@ -70,6 +70,7 @@ export function LetterRow({ l, extra }: { l: Letter; extra?: React.ReactNode }) 
           <StatusBadge s={l.status} />
           <DueChip due={l.due_date} status={l.status} />
           <span className="cat">{l.category}</span>
+          {!!l.needs_review && <span className="review-chip">● perlu dicek</span>}
           {!!l.thread_size && l.thread_size > 1 && <span className="thread-chip">🔗 {l.thread_size} surat</span>}
           {extra}
         </div>

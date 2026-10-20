@@ -171,6 +171,50 @@ def suggest(text):
     return out
 
 
+def _name_variants(owners):
+    """'Budi Santoso Wijaya' -> {nama lengkap, 'budi wijaya'} (kata ≥4 huruf saja)."""
+    out = set()
+    for o in owners:
+        words = [w for w in re.findall(r"[a-z]+", o.lower())]
+        if len(" ".join(words)) >= 4:
+            out.add(" ".join(words))
+        if len(words) >= 2 and len(words[0]) >= 4 and len(words[-1]) >= 4:
+            out.add(f"{words[0]} {words[-1]}")
+    return out
+
+
+def detect_direction(text, owners):
+    """Masuk kalau namamu ada di blok tujuan (Yth./Kepada); keluar kalau di kop atau tanda tangan."""
+    names = _name_variants(owners)
+    if not names or not text.strip():
+        return None
+    low = re.sub(r"[^a-z]+", " ", text.lower())   # samakan spasi/tanda baca hasil OCR
+    has = lambda zone: any(n in zone for n in names)
+    m = re.search(r"\b(yth|kepada)\b", low)
+    if m and has(low[m.start(): m.start() + 220]):
+        return "masuk"
+    if has(low[:200]) or has(low[int(len(low) * 0.65):]):
+        return "keluar"
+    if has(low):
+        return "masuk"
+    return None
+
+
+def addressee(text):
+    """Pihak tujuan dari blok 'Yth.' / 'Kepada'."""
+    lines = [l.strip() for l in text.splitlines()]
+    for i, line in enumerate(lines[:60]):
+        m = re.match(r"^(?:kepada\s*)?(?:yth\.?|kepada)\s*:?\s*(.*)$", line, re.I)
+        if not m:
+            continue
+        rest = m.group(1).strip(" .:")
+        if len(rest) < 3:
+            rest = next((l for l in lines[i + 1:i + 4] if len(l) >= 3), "")
+        rest = re.sub(r"^(bapak|ibu|sdr\.?|saudara)\s+", "", rest, flags=re.I)
+        return rest[:120]
+    return ""
+
+
 def norm_number(n):
     return re.sub(r"[^a-z0-9]", "", (n or "").lower())
 

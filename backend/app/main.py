@@ -1,20 +1,22 @@
 """API Arsip Surat — satu port menyajikan API + frontend (build)."""
+import asyncio
 import json
 import re
 import shutil
+import tempfile
 import time
-import uuid
+from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import ai, db, extract, ocr, threads
+from . import ai, db, extract, ocr, service, threads, watcher
 from .db import ARSIP, INBOX, ROOT, TRASH, connect, row_to_letter
 
 try:  # foto HEIC dari iPhone
@@ -23,8 +25,23 @@ try:  # foto HEIC dari iPhone
 except ImportError:
     pass
 
-app = FastAPI(title="Arsip Surat")
 db.init()
+with connect() as _c:   # migrasi kolom baru untuk database lama
+    _cols = {r["name"] for r in _c.execute("PRAGMA table_info(letters)")}
+    if "needs_review" not in _cols:
+        _c.execute("ALTER TABLE letters ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0")
+    if "source" not in _cols:
+        _c.execute("ALTER TABLE letters ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    task = asyncio.create_task(watcher.loop())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="Arsip Surat", lifespan=lifespan)
 
 STATUSES = {
     "perlu_tindakan": "Perlu tindakan",
@@ -34,7 +51,7 @@ STATUSES = {
 }
 RELATION_TYPES = list(threads.RELATION_LABEL)
 LETTER_FIELDS = ["direction", "number", "letter_date", "io_date", "subject", "party",
-                 "category", "status", "due_date", "notes"]
+                 "category", "status", "due_date", "notes", "needs_review"]
 
 
 class LetterIn(BaseModel):
@@ -66,6 +83,11 @@ class LetterPatch(BaseModel):
     due_date: Optional[str] = None
     notes: Optional[str] = None
     highlights: Optional[list[str]] = None
+    needs_review: Optional[int] = None
+
+
+class SettingsIn(BaseModel):
+    owner_names: list[str]
 
 
 class RelationIn(BaseModel):
@@ -79,22 +101,6 @@ def _get(conn, lid):
     if not row:
         raise HTTPException(404, "Surat tidak ditemukan")
     return row_to_letter(row)
-
-
-def _slug(s):
-    s = re.sub(r"[^a-zA-Z0-9]+", "-", s.lower()).strip("-")
-    return s[:50] or "surat"
-
-
-def _archive_path(lid, direction, d, subject):
-    try:
-        y, m = d[:4], d[5:7]
-        int(y), int(m)
-    except (TypeError, ValueError):
-        y, m = date.today().strftime("%Y"), date.today().strftime("%m")
-    folder = ARSIP / y / m / direction.upper()
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder / f"{lid:04d}_{_slug(subject)}.pdf"
 
 
 # ---------------------------------------------------------------- meta / unggah
@@ -113,12 +119,7 @@ def _clean_inbox(max_age_hours=48):
             p.unlink(missing_ok=True)
 
 
-@app.post("/api/upload")
-async def upload(files: list[UploadFile] = File(...)):
-    _clean_inbox()
-    token = uuid.uuid4().hex
-    work = INBOX / token
-    work.mkdir(parents=True)
+def _save_uploads(files, work: Path):
     inputs = []
     for i, f in enumerate(files):
         suffix = Path(f.filename or "").suffix.lower() or ".jpg"
@@ -126,22 +127,43 @@ async def upload(files: list[UploadFile] = File(...)):
         with open(p, "wb") as out:
             shutil.copyfileobj(f.file, out)
         inputs.append(p)
-    out_pdf = INBOX / f"{token}.pdf"
-    try:
-        res = await run_in_threadpool(ocr.process, inputs, out_pdf)
-    except ValueError as e:
-        shutil.rmtree(work, ignore_errors=True)
-        raise HTTPException(400, str(e))
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    return inputs
+
+
+@app.post("/api/upload/auto")
+async def upload_auto(files: list[UploadFile] = File(...), one_letter: bool = Form(False)):
+    """Baca & simpan langsung tanpa form. one_letter=True: semua file = halaman satu surat."""
+    _clean_inbox()
+    results = []
+    with tempfile.TemporaryDirectory(dir=INBOX) as work:
+        inputs = _save_uploads(files, Path(work))
+        groups = [inputs] if one_letter else [[p] for p in inputs]
+        for g in groups:
+            name = files[inputs.index(g[0])].filename
+            try:
+                res = await run_in_threadpool(service.import_files, g, "otomatis")
+                results.append({**res, "file": name, "ok": True})
+            except Exception as e:  # noqa: BLE001
+                results.append({"file": name, "ok": False, "error": str(e)})
+    return results
+
+
+@app.post("/api/upload")
+async def upload(files: list[UploadFile] = File(...)):
+    _clean_inbox()
+    with tempfile.TemporaryDirectory(dir=INBOX) as work:
+        inputs = _save_uploads(files, Path(work))
+        try:
+            token, res = await run_in_threadpool(service.ocr_to_inbox, inputs)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     text = res["text"]
-    (INBOX / f"{token}.txt").write_text(text)
-    h = ocr.file_hash(out_pdf)
+    h = ocr.file_hash(INBOX / f"{token}.pdf")
     with connect() as conn:
         dup = conn.execute("SELECT id, subject FROM letters WHERE file_hash = ?", (h,)).fetchone()
         sug = extract.suggest(text)
-        sug["related"] = _match_references(conn, sug["references"], None)
+        sug["related"] = service.match_references(conn, sug["references"], None)
     return {"token": token, "pages": res["pages"], "method": res["method"],
             "text_chars": len(text.strip()), "suggestions": sug,
             "highlights": extract.highlights(text), "duplicate": dict(dup) if dup else None}
@@ -155,28 +177,7 @@ def inbox_file(token: str):
     return FileResponse(p, media_type="application/pdf")
 
 
-def _match_references(conn, refs, exclude_id):
-    """Nomor surat yang dirujuk -> surat yang sudah ada di arsip."""
-    if not refs:
-        return []
-    out = []
-    for r in conn.execute("SELECT id, number, subject, party, direction FROM letters WHERE number != ''"):
-        if r["id"] != exclude_id and any(extract.same_number(r["number"], ref) for ref in refs):
-            out.append(dict(r))
-    return out
-
-
 # ---------------------------------------------------------------- surat
-
-def _auto_close(conn, from_id, to_id, rtype):
-    """Balasan menutup surat yang dibalas."""
-    if rtype != "membalas":
-        return
-    target = _get(conn, to_id)
-    if target["status"] in ("perlu_tindakan", "menunggu_balasan"):
-        conn.execute("UPDATE letters SET status='selesai', updated_at=datetime('now','localtime') WHERE id=?",
-                     (to_id,))
-
 
 @app.post("/api/letters")
 def create_letter(body: LetterIn):
@@ -190,34 +191,23 @@ def create_letter(body: LetterIn):
             raise HTTPException(400, "Unggahan sudah kedaluwarsa, unggah ulang")
         txt = INBOX / f"{tok}.txt"
         text = txt.read_text() if txt.exists() else ""
-    status = body.status or ("perlu_tindakan" if body.direction == "masuk" else "menunggu_balasan")
+    f = body.model_dump(exclude={"token", "highlights", "relate_to", "relate_type"})
+    f["status"] = body.status or ("perlu_tindakan" if body.direction == "masuk" else "menunggu_balasan")
     hl = body.highlights if body.highlights is not None else extract.highlights(text)
     with connect() as conn:
-        cur = conn.execute(
-            "INSERT INTO letters (direction, number, letter_date, io_date, subject, party, category, status,"
-            " due_date, notes, ocr_text, highlights, highlights_source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (body.direction, body.number, body.letter_date or None, body.io_date or None, body.subject,
-             body.party, body.category, status, body.due_date or None, body.notes, text,
-             json.dumps(hl, ensure_ascii=False), "auto"))
-        lid = cur.lastrowid
-        if pdf:
-            dest = _archive_path(lid, body.direction, body.io_date or body.letter_date, body.subject)
-            shutil.move(pdf, dest)
-            (INBOX / f"{pdf.stem}.txt").unlink(missing_ok=True)
-            from pypdf import PdfReader
-            conn.execute("UPDATE letters SET file_path=?, file_hash=?, pages=? WHERE id=?",
-                         (str(dest.relative_to(ROOT)), ocr.file_hash(dest), len(PdfReader(str(dest)).pages), lid))
+        lid = service.store(conn, f, text, pdf, hl)
         if body.relate_to and body.relate_type in RELATION_TYPES:
             _get(conn, body.relate_to)
-            conn.execute("INSERT INTO relations (from_id, to_id, type) VALUES (?,?,?)",
-                         (lid, body.relate_to, body.relate_type))
-            _auto_close(conn, lid, body.relate_to, body.relate_type)
+            service.add_relation(conn, lid, body.relate_to, body.relate_type)
         return _detail(conn, lid)
 
 
 @app.get("/api/letters")
-def list_letters(q: str = "", direction: str = "", status: str = "", category: str = "", limit: int = 500):
+def list_letters(q: str = "", direction: str = "", status: str = "", category: str = "",
+                 review: str = "", limit: int = 500):
     sql, args = "SELECT * FROM letters WHERE 1=1", []
+    if review:
+        sql += " AND needs_review = 1"
     for term in q.split():
         like = f"%{term}%"
         sql += " AND (subject LIKE ? OR party LIKE ? OR number LIKE ? OR notes LIKE ? OR ocr_text LIKE ? OR highlights LIKE ?)"
@@ -258,7 +248,7 @@ def _detail(conn, lid):
     l["thread"] = threads.with_ai(conn, threads.build(conn, ids)) if len(ids) > 1 else None
     sug = extract.suggest(l["ocr_text"]) if l["ocr_text"] else {"references": []}
     linked = {r["other_id"] for r in rel}
-    l["suggested_relations"] = [s for s in _match_references(conn, sug["references"], lid) if s["id"] not in linked]
+    l["suggested_relations"] = [s for s in service.match_references(conn, sug["references"], lid) if s["id"] not in linked]
     return l
 
 
@@ -292,8 +282,9 @@ def delete_letter(lid: int):
     """File dipindah ke data/sampah (tidak dimusnahkan), data dihapus dari register."""
     with connect() as conn:
         l = _get(conn, lid)
-        if l["file_path"] and (ROOT / l["file_path"]).exists():
-            shutil.move(ROOT / l["file_path"], TRASH / Path(l["file_path"]).name)
+        src = service.file_abspath(l["file_path"])
+        if src and src.exists():
+            shutil.move(src, TRASH / src.name)
         conn.execute("DELETE FROM letters WHERE id = ?", (lid,))
     return {"ok": True}
 
@@ -302,9 +293,10 @@ def delete_letter(lid: int):
 def letter_file(lid: int):
     with connect() as conn:
         l = _get(conn, lid)
-    if not l["file_path"] or not (ROOT / l["file_path"]).exists():
+    src = service.file_abspath(l["file_path"])
+    if not src or not src.exists():
         raise HTTPException(404, "Surat ini tidak punya file")
-    return FileResponse(ROOT / l["file_path"], media_type="application/pdf",
+    return FileResponse(src, media_type="application/pdf",
                         headers={"Content-Disposition": f'inline; filename="{Path(l["file_path"]).name}"'})
 
 
@@ -347,9 +339,7 @@ def add_relation(body: RelationIn):
                               (body.from_id, body.to_id, body.to_id, body.from_id)).fetchone()
         if exists:
             raise HTTPException(400, "Kedua surat ini sudah berelasi")
-        conn.execute("INSERT INTO relations (from_id, to_id, type) VALUES (?,?,?)",
-                     (body.from_id, body.to_id, body.type))
-        _auto_close(conn, body.from_id, body.to_id, body.type)
+        service.add_relation(conn, body.from_id, body.to_id, body.type)
     return {"ok": True}
 
 
@@ -405,6 +395,7 @@ def dashboard():
     action = sorted([l for l in rows if l["status"] == "perlu_tindakan"],
                     key=lambda l: (l["due_date"] or "9999", d(l)))
     unreplied = [l for l in rows if l["direction"] == "masuk" and l["status"] == "perlu_tindakan" and l["id"] not in replied]
+    review = sorted([l for l in rows if l.get("needs_review")], key=lambda l: l["created_at"], reverse=True)
     waiting = sorted([l for l in rows if l["direction"] == "keluar" and l["status"] == "menunggu_balasan"], key=d)
 
     weeks = []
@@ -422,8 +413,10 @@ def dashboard():
             "perlu_tindakan": len(action),
             "menunggu_balasan": len(waiting),
             "lewat_tenggat": len(overdue),
+            "perlu_dicek": len(review),
             "total": len(rows),
         },
+        "review": review[:10],
         "overdue": sorted(overdue, key=lambda l: l["due_date"]),
         "upcoming": upcoming,
         "action": action[:10],
@@ -433,6 +426,26 @@ def dashboard():
         "recent": sorted(rows, key=lambda l: l["created_at"], reverse=True)[:8],
         "weeks": weeks,
     }
+
+
+# ---------------------------------------------------------------- pengaturan
+
+@app.get("/api/settings")
+def get_settings():
+    with connect() as conn:
+        owners = db.get_setting(conn, "owner_names", [])
+    return {"owner_names": owners,
+            "storage": {"arsip": str(db.ARSIP), "kotak_masuk": str(db.DROP), "sampah": str(db.TRASH),
+                        "backup": str(db.BACKUP), "database": str(db.DB_PATH),
+                        "icloud": "Mobile Documents" in str(db.HOME)},
+            "watcher": watcher.state}
+
+
+@app.put("/api/settings")
+def put_settings(body: SettingsIn):
+    with connect() as conn:
+        db.set_setting(conn, "owner_names", [n.strip() for n in body.owner_names if n.strip()])
+    return get_settings()
 
 
 # ---------------------------------------------------------------- frontend

@@ -69,6 +69,16 @@ export default function LetterPage() {
         </div>
       </header>
       {err && <div className="error">{err}</div>}
+      {!!l.needs_review && (
+        <div className="review-bar">
+          <div><b>Diisi otomatis.</b> Cek sekilas arah surat, pihak, perihal, dan tanggalnya.
+            {l.notes.startsWith('Perlu dicek') || l.notes.startsWith('Teks tidak') ? <span className="muted"> {l.notes}</span> : null}</div>
+          <div className="row-btns">
+            <button className="btn btn-sm" onClick={() => { startEdit(); setTimeout(() => document.getElementById('data-surat')?.scrollIntoView({ behavior: 'smooth' }), 50) }}>Perbaiki</button>
+            <button className="btn btn-sm btn-primary" onClick={() => run('', async () => setL(await api.patch(l.id, { needs_review: 0 })))}>✓ Sudah benar</button>
+          </div>
+        </div>
+      )}
 
       <div className="split letter-split">
         <div className="stack">
@@ -139,14 +149,14 @@ export default function LetterPage() {
             )}
           </section>
 
-          <section className="card">
+          <section className="card" id="data-surat">
             <div className="card-head"><h2>Data surat</h2>{!edit && <button className="link small" onClick={startEdit}>Edit</button>}</div>
             {edit ? (
               <>
                 <LetterForm v={edit} onChange={setEdit} meta={meta} />
                 <div className="row-btns end">
                   <button className="btn btn-sm" onClick={() => setEdit(null)}>Batal</button>
-                  <button className="btn btn-sm btn-primary" onClick={() => run('', async () => { setL(await api.patch(l.id, edit)); setEdit(null) })}>Simpan</button>
+                  <button className="btn btn-sm btn-primary" onClick={() => run('', async () => { setL(await api.patch(l.id, { ...edit, needs_review: 0 })); setEdit(null) })}>Simpan</button>
                 </div>
               </>
             ) : (

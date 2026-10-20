@@ -47,6 +47,14 @@ export default function Dashboard() {
         <div className={`kpi ${d.kpi.lewat_tenggat ? 'kpi-red' : ''}`}><span>Lewat tenggat</span><b>{d.kpi.lewat_tenggat}</b></div>
       </div>
 
+      {d.review.length > 0 && (
+        <section className="card card-review">
+          <div className="card-head"><h2>Baru diisi otomatis — perlu dicek ({d.kpi.perlu_dicek})</h2>
+            <Link to="/surat?review=1" className="link small">Lihat semua →</Link></div>
+          {d.review.slice(0, 4).map(l => <LetterRow key={l.id} l={l} />)}
+        </section>
+      )}
+
       {(d.overdue.length > 0 || d.upcoming.length > 0) && (
         <section className="card card-alert">
           <div className="card-head"><h2>Tenggat</h2></div>

@@ -10,16 +10,28 @@ ringkasan perkembangannya.
 ./scripts/start.sh
 ```
 
-Buka `http://localhost:8100`. Semua data ada di `data/`:
+Buka `http://localhost:8100`, lalu isi **Nama kamu** di menu Pengaturan (dipakai menebak arah surat).
+
+## Penyimpanan
 
 | Lokasi | Isi |
 |---|---|
-| `data/surat.db` | database (SQLite) |
-| `data/arsip/TAHUN/BULAN/MASUK|KELUAR/` | PDF surat (sudah ber-lapisan-teks, bisa dicari) |
-| `data/sampah/` | file surat yang dihapus dari register |
-| `data/inbox/` | unggahan yang belum disimpan (dibersihkan otomatis setelah 2 hari) |
+| `iCloud Drive/Arsip Surat/Arsip/TAHUN/BULAN/MASUK|KELUAR/` | PDF surat (ber-lapisan-teks, bisa dicari) |
+| `iCloud Drive/Arsip Surat/Kotak Masuk/` | taruh file di sini → diimpor otomatis |
+| `iCloud Drive/Arsip Surat/_backup/` | salinan harian database (14 terakhir) |
+| `iCloud Drive/Arsip Surat/Sampah/` | file surat yang dihapus dari register |
+| `data/surat.db` | database (lokal; SQLite tidak aman disinkron iCloud) |
+| `data/inbox/` | unggahan yang belum disimpan (dibersihkan setelah 2 hari) |
 
-Backup cukup salin folder `data/`.
+Lokasi iCloud bisa diganti dengan env `ARSIP_HOME` di `.env`.
+
+## Input otomatis
+
+- **Kotak Masuk iCloud**: di iPhone buka app Files → folder `Arsip Surat/Kotak Masuk` → ⋯ → *Pindai Dokumen*.
+  Dalam ±30 detik surat dibaca, diisi, dan disimpan. Subfolder `Masuk/` dan `Keluar/` memaksa arahnya.
+- **Unggah di web**: pilih/foto file → *Baca & simpan otomatis*. Banyak PDF = banyak surat;
+  banyak foto = halaman satu surat (bisa diubah).
+- Surat yang diisi otomatis ditandai **perlu dicek** (muncul di beranda). Tekan *Sudah benar* atau *Perbaiki*.
 
 ### Jalan otomatis saat Mac menyala
 
