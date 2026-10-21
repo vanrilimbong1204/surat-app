@@ -15,6 +15,8 @@ MAX_INPUT_CHARS = 6000
 
 
 def available() -> bool:
+    if not BASE_URL:
+        return False
     try:
         r = httpx.get(f"{BASE_URL}/models", headers=_headers(), timeout=2)
         return r.status_code == 200

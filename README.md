@@ -1,73 +1,106 @@
 # Arsip Surat
 
-Dashboard pribadi untuk surat masuk & keluar: unggah scan/PDF, isi surat dibaca otomatis (OCR),
-poin yang dibahas disorot, surat yang saling berkaitan dihubungkan jadi **benang** lengkap dengan
-ringkasan perkembangannya.
+Dashboard pribadi untuk mencatat **surat masuk & keluar**. Foto atau unggah surat, lalu sistem
+membaca isinya (OCR), mengisi datanya sendiri, menyorot **poin yang dibahas**, dan menghubungkan
+surat yang saling berkaitan jadi satu **benang** lengkap dengan ringkasan perkembangannya.
 
-## Menjalankan
+Semua berjalan di komputer sendiri — tanpa akun, tanpa server pihak ketiga, tanpa biaya AI.
+Bisa dibuka dari HP lewat Wi-Fi rumah atau Tailscale.
+
+## Fitur
+
+- **Baca otomatis**: OCR lokal (Tesseract, bahasa Indonesia + Inggris) untuk foto, scan, dan PDF.
+  Nomor, perihal, tanggal, tenggat ("paling lambat …"), pengirim/tujuan, kategori, dan arah
+  masuk/keluar diisi sendiri; hasilnya ditandai **perlu dicek**.
+- **Poin yang dibahas**: kalimat penting (permintaan, tenggat, nominal Rp, sanksi) disorot; bisa diedit.
+- **Relasi & benang**: membalas / menindaklanjuti / merujuk / meralat. Nomor surat yang disebut di isi
+  surat otomatis ditautkan ke arsip. Tiap benang punya posisi sekarang (giliranmu / menunggu pihak lain /
+  selesai), kronologi, dan hal yang masih harus diperhatikan.
+- **Kotak Masuk folder**: taruh file di folder `Kotak Masuk` (mis. di Google Drive/iCloud) — diimpor sendiri.
+- **Beranda**: perlu tindakan, tenggat, menunggu balasan, benang aktif, grafik 8 minggu.
+- **AI opsional**: tombol "Ringkas dengan AI" bila ada endpoint OpenAI-compatible di `.env`.
+
+## Memasang
+
+Butuh macOS atau Linux (Windows: pakai WSL), plus Python 3.10+ dan Node.js 20+.
 
 ```bash
+git clone https://github.com/vanrilimbong1204/surat-app.git
+cd surat-app
+./scripts/setup.sh
 ./scripts/start.sh
 ```
 
-Buka `http://localhost:8100`, lalu isi **Nama kamu** di menu Pengaturan (dipakai menebak arah surat).
+Buka `http://localhost:8100`, lalu di menu **Pengaturan** isi **Nama kamu** — dipakai menebak arah surat
+(namamu di bagian "Yth./Kepada" = surat masuk; di kop/tanda tangan = surat keluar).
+
+`setup.sh` memasang Tesseract & Poppler (lewat Homebrew atau apt), membuat virtualenv Python, dan
+mem-build tampilan. Aman dijalankan ulang setelah `git pull`.
+
+### Jalan otomatis saat login (macOS)
+
+```bash
+./scripts/install-autostart.sh              # pasang
+./scripts/install-autostart.sh --uninstall  # lepas
+```
+
+Log ada di `~/Library/Logs/arsipsurat.log`.
 
 ## Penyimpanan
 
-| Lokasi | Isi |
+Atur di `.env` (salin dari `.env.example`):
+
+| Variabel | Fungsi |
 |---|---|
-| `Google Drive/Arsip Surat/Arsip/TAHUN/BULAN/MASUK|KELUAR/` | PDF surat (ber-lapisan-teks, bisa dicari) |
-| `Google Drive/Arsip Surat/Kotak Masuk/` | taruh file di sini → diimpor otomatis |
-| `Google Drive/Arsip Surat/_backup/` | salinan harian database (14 terakhir) |
-| `Google Drive/Arsip Surat/Sampah/` | file surat yang dihapus dari register |
-| `data/surat.db` | database (lokal; SQLite tidak aman disinkron cloud) |
-| `data/inbox/` | unggahan yang belum disimpan (dibersihkan setelah 2 hari) |
+| `ARSIP_HOME` | Folder file surat. Kosong = iCloud Drive (kalau ada) atau `data/`. |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` | Opsional, untuk tombol ringkas AI. |
+| `PORT`, `HOST` | Opsional, default `8100` dan `0.0.0.0`. |
 
-Lokasi diatur lewat `ARSIP_HOME` di `.env` (mis. folder Google Drive for desktop).
-Tanpa `ARSIP_HOME`, app memakai iCloud Drive kalau ada.
+Isi folder `ARSIP_HOME`:
 
-### Dipakai dari akun Gmail lain
-
-Dashboard tidak memakai login Google, jadi akun Gmail di perangkat lain tidak berpengaruh — cukup buka alamat dashboard
-(lewat Tailscale). Untuk melihat/menambah file langsung di Drive dari akun lain: bagikan folder `Arsip Surat`
-ke akun itu sebagai **Editor**, lalu di akun tersebut *Tambahkan pintasan ke Drive*.
-
-## Input otomatis
-
-- **Kotak Masuk Drive**: di HP buka app Google Drive → + → *Pindai*, simpan ke `Arsip Surat/Kotak Masuk`
-  (atau pindahkan file yang sudah ada di Drive ke folder itu).
-  Dalam ±30 detik surat dibaca, diisi, dan disimpan. Subfolder `Masuk/` dan `Keluar/` memaksa arahnya.
-- **Unggah di web**: pilih/foto file → *Baca & simpan otomatis*. Banyak PDF = banyak surat;
-  banyak foto = halaman satu surat (bisa diubah).
-- Surat yang diisi otomatis ditandai **perlu dicek** (muncul di beranda). Tekan *Sudah benar* atau *Perbaiki*.
-
-### Jalan otomatis saat Mac menyala
-
-```bash
-cp scripts/com.arsipsurat.api.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.arsipsurat.api.plist
+```
+Arsip Surat/
+├── Arsip/2026/10/MASUK/0001_perihal.pdf   ← PDF ber-lapisan-teks (bisa dicari)
+├── Kotak Masuk/                           ← taruh file di sini → diimpor otomatis
+│   ├── Masuk/  Keluar/                    ← paksa arah surat
+│   └── _Sudah diimpor/  _Gagal/
+├── Sampah/                                ← surat yang dihapus dari register
+└── _backup/                               ← salinan harian database (14 terakhir)
 ```
 
-Log: `~/Library/Logs/arsipsurat.log`. Restart: `launchctl kickstart -k gui/$(id -u)/com.arsipsurat.api`.
+Database (`data/surat.db`) sengaja disimpan lokal — SQLite bisa rusak bila disinkron cloud;
+salinannya dibackup harian ke `_backup/`.
 
-## Akses dari HP (Tailscale)
+**Google Drive**: pasang *Google Drive for desktop*, lalu set
+`ARSIP_HOME=~/Library/CloudStorage/GoogleDrive-<email>/My Drive/Arsip Surat`. Dari HP, scan langsung lewat
+app Google Drive (+ → Pindai) ke folder `Kotak Masuk`. Untuk akun Google lain, bagikan folder
+`Arsip Surat` sebagai Editor.
 
-1. Pasang **Tailscale** di Mac (App Store / tailscale.com) dan di HP, login dengan akun yang sama.
-2. Di HP buka `http://<nama-mac>:8100` (nama/IP Mac terlihat di app Tailscale, mis. `100.x.y.z`).
-3. Supaya bisa "Add to Home Screen" sebagai app + HTTPS, jalankan di Mac:
-   `tailscale serve --bg 8100` → akses lewat `https://<nama-mac>.<tailnet>.ts.net`.
+## Akses dari HP
 
-Di Wi-Fi rumah yang sama, `http://<IP-lokal-Mac>:8100` juga bisa tanpa Tailscale.
+- Wi-Fi yang sama: `http://<IP-komputer>:8100`
+- Dari mana saja: pasang [Tailscale](https://tailscale.com) di komputer & HP (akun yang sama), buka
+  `http://<nama-komputer>:8100`. Untuk HTTPS + "Add to Home Screen": `tailscale serve --bg 8100`.
 
-## Cara kerja fitur
+## Pengembangan
 
-- **OCR**: Tesseract lokal (bahasa Indonesia + Inggris), tanpa AI. PDF digital dibaca langsung.
-- **Poin yang dibahas**: kalimat diberi skor berdasarkan kata kunci (mohon, paling lambat, wajib,
-  denda…), tanggal, dan nominal Rp. Selalu bisa diedit manual.
-- **Usulan metadata**: nomor, perihal, tanggal, tenggat ("paling lambat …"), pengirim, kategori.
-- **Relasi**: membalas / menindaklanjuti / merujuk / meralat. Nomor surat yang disebut di isi surat
-  dicocokkan otomatis ke arsip (toleran salah baca OCR). Mencatat balasan menutup surat yang dibalas.
-- **Benang**: posisi sekarang (giliranmu / menunggu pihak lain / selesai), kronologi dalam kalimat,
-  hal yang masih harus diperhatikan, tenggat terdekat.
-- **AI (opsional)**: tombol "Ringkas dengan AI" muncul hanya jika endpoint di `.env` hidup
-  (lihat `.env.example`). Dipanggil hanya saat diklik, hasil disimpan.
+```
+backend/app/
+  main.py      API FastAPI + menyajikan build frontend
+  service.py   simpan surat, impor otomatis, relasi
+  extract.py   ekstraksi berbasis aturan: poin, metadata, arah surat, rujukan
+  ocr.py       foto/PDF → PDF ber-lapisan-teks + teks (Tesseract, Poppler)
+  threads.py   benang surat & ringkasan perkembangan
+  watcher.py   pemantau folder Kotak Masuk + backup harian
+  ai.py        AI opsional
+frontend/src/  React + TypeScript (Vite), PWA responsif
+```
+
+Mode pengembangan (auto-reload):
+
+```bash
+.venv/bin/uvicorn app.main:app --app-dir backend --port 8100 --reload --reload-dir backend
+cd frontend && npm run dev     # http://localhost:5180, /api diteruskan ke 8100
+```
+
+Kontribusi: buat branch, commit dengan pesan jelas, lalu buka Pull Request.

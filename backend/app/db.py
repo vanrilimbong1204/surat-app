@@ -14,7 +14,8 @@ DB_PATH = DATA / "surat.db"  # database tetap lokal (SQLite tidak aman disinkron
 # File surat disimpan di folder yang tersinkron cloud (Google Drive for desktop / iCloud)
 # supaya bisa dibuka dari HP walau Mac mati dan otomatis ter-backup. Atur lewat env ARSIP_HOME.
 _ICLOUD = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
-HOME = Path(os.getenv("ARSIP_HOME") or (_ICLOUD / "Arsip Surat" if _ICLOUD.exists() else DATA))
+_ENV_HOME = os.getenv("ARSIP_HOME")
+HOME = Path(_ENV_HOME).expanduser() if _ENV_HOME else (_ICLOUD / "Arsip Surat" if _ICLOUD.exists() else DATA)
 CLOUD = ("Google Drive" if "CloudStorage/GoogleDrive" in str(HOME)
          else "iCloud Drive" if "Mobile Documents" in str(HOME) else None)
 ARSIP = HOME / "Arsip"              # Arsip/2026/10/MASUK/0001_perihal.pdf
